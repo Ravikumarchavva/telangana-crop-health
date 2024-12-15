@@ -8,11 +8,6 @@ from datetime import datetime
 from skimage import exposure
 import logging  # Added import
 import warnings
-# from warnings import DeprecationWarning  # Removed import
-import os  # Added import
-import sys  # Added import
-from contextlib import contextmanager  # Added import
-import time  # Added import
 
 # Configure logging to suppress info-level logs
 logging.basicConfig(level=logging.ERROR)
@@ -22,21 +17,6 @@ logging.getLogger('geemap').setLevel(logging.ERROR)  # Suppress 'geemap' logs
 # Refined warning filter to use warnings.DeprecationWarning
 warnings.filterwarnings('ignore')
 
-@contextmanager
-def suppress_stdout_stderr():
-    """
-    A context manager that redirects stdout and stderr to devnull.
-    """
-    with open(os.devnull, 'w') as devnull:
-        old_stdout = sys.stdout
-        old_stderr = sys.stderr
-        try:
-            sys.stdout = devnull
-            sys.stderr = devnull
-            yield
-        finally:
-            sys.stdout = old_stdout
-            sys.stderr = old_stderr
 
 class Utils:
     @staticmethod
@@ -83,7 +63,7 @@ class Utils:
         return ee.FeatureCollection(features)
 
     @staticmethod
-    def download_rgb_image(collection_name, bands, start_date, end_date, region, output_folder='downloads'):
+    def download_rgb_image(collection_name: str, bands: list, start_date: str, end_date: str, region: ee.Geometry, output_folder: str = 'downloads') -> str:
         """Download RGB bands from a GEE collection filtered by date and region."""
         # Load the image collection, filter by date, and clip to region
         collection = ee.ImageCollection(collection_name).filterDate(start_date, end_date).filterBounds(region)
@@ -94,8 +74,7 @@ class Utils:
         image_name = f'{output_folder}/{image_id}_RGB_{start_date}_{end_date}.tif'
 
         # Suppress stdout and stderr during image export
-        with suppress_stdout_stderr():
-            geemap.ee_export_image(
+        geemap.ee_export_image(
                 image,
                 filename=image_name,
                 scale=10,  # Sentinel-2 resolution in meters
@@ -109,41 +88,42 @@ class Utils:
 
     @staticmethod
     def process_row(index, row):
-        # Format start and end dates
-        start_date = Utils.format_date(row['SDate'])
-        end_date = Utils.format_date(row['HDate'])
-
-        # Skip rows with invalid dates
-        if not start_date or not end_date:
-            logging.warning(f"Skipping entry due to invalid dates: SDate={row['SDate']}, HDate={row['HDate']}")
-            return index, None
-
-        # Extract and check geometry
-        region_geometry = row['geometry']
-        district = row['District']
-
-        # Verify valid geometry and convert it to EE format
-        if region_geometry.is_empty:
-            logging.warning(f"Skipping entry due to empty geometry for District: {district}")
-            return index, None
-
-        # Convert geometry type to EE compatible format
-        if region_geometry.geom_type == 'Polygon':
-            region = ee.Geometry.Polygon(region_geometry.__geo_interface__['coordinates'])
-        elif region_geometry.geom_type == 'MultiPolygon':
-            coords = [polygon.exterior.coords[:] for polygon in region_geometry.geoms]
-            region = ee.Geometry.MultiPolygon(coords)
-        else:
-            logging.warning(f"Skipping unsupported geometry type: {region_geometry.geom_type} for District: {district}")
-            return index, None
-
-        # Define Sentinel-2 collection and bands
-        image_collection_name = 'COPERNICUS/S2'
-        bands = ['B4', 'B3', 'B2', 'B8', 'B5', 'B6', 'B7', 'B8A', 'B11', 'B12']
-
-        # Attempt to download the image with retries
         try:
-            image_file = Utils.download_rgb_image(
+            # Format start and end dates
+            start_date = Utils.format_date(row['SDate'])
+            end_date = Utils.format_date(row['HDate'])
+
+            # Skip rows with invalid dates
+            if not start_date or not end_date:
+                logging.warning(f"Skipping entry due to invalid dates: SDate={row['SDate']}, HDate={row['HDate']}")
+                return index, None
+
+            # Extract and check geometry
+            region_geometry = row['geometry']
+            district = row['District']
+
+            # Verify valid geometry and convert it to EE format
+            if region_geometry.is_empty:
+                logging.warning(f"Skipping entry due to empty geometry for District: {district}")
+                return index, None
+
+            # Convert geometry type to EE compatible format
+            if region_geometry.geom_type == 'Polygon':
+                region = ee.Geometry.Polygon(region_geometry.__geo_interface__['coordinates'])
+            elif region_geometry.geom_type == 'MultiPolygon':
+                coords = [polygon.exterior.coords[:] for polygon in region_geometry.geoms]
+                region = ee.Geometry.MultiPolygon(coords)
+            else:
+                logging.warning(f"Skipping unsupported geometry type: {region_geometry.geom_type} for District: {district}")
+                return index, None
+
+            # Define Sentinel-2 collection and bands
+            image_collection_name = 'COPERNICUS/S2'
+            bands = ['B4', 'B3', 'B2', 'B8', 'B5', 'B6', 'B7', 'B8A', 'B11', 'B12']
+
+            # Attempt to download the image with retries
+
+            image_file_path = Utils.download_rgb_image(
                 image_collection_name,
                 bands,
                 start_date,
@@ -151,10 +131,10 @@ class Utils:
                 region,
                 output_folder='downloads'
             )
-            return index, image_file
+            return index, image_file_path
         except Exception as e:
-                logging.error(f"Failed to process entry for District {district} after attempt.")
-                return index, None
+            logging.error(f"Error processing index {index} for District {district}: {e}", exc_info=True)
+            return index, None
 
     @staticmethod
     def scale_band(band):

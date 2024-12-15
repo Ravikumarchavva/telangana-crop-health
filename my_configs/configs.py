@@ -36,10 +36,10 @@ class Config:
         'boosting_type': 'gbdt',
         'objective': 'multiclass',
         'metric': 'multi_logloss',
-        'num_class': None,  # To be set dynamically based on data
+        'num_class': 3,  # Set a default or handle dynamically based on dataset
         'num_leaves': 81,
         'learning_rate': 0.01,
         'n_estimators': 500,
         'random_state': 42,
-        'force_row_wise': 'true'
+        'force_row_wise': True  # Use boolean instead of string
     }
